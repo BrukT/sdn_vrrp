@@ -4,7 +4,8 @@ from mininet.node import Node
 from mininet.log import setLogLevel, info
 from mininet.cli import CLI
 from mininet.node import RemoteController
-from mininet.nodelib import LinuxBridge
+#from mininet.nodelib import LinuxBridge
+from mininet.node import OVSBridge
 
 class LinuxRouter( Node ):
     "A Node with IP forwarding enabled."
@@ -43,7 +44,8 @@ class NetworkTopo( Topo ):
 	s1 = self.addHost( 'h21', ip='10.0.2.3/24', defaultRoute='via 10.0.2.1' )
 	s2 = self.addHost( 'h22', ip='10.0.2.4/24', defaultRoute='via 10.0.2.1' )
 
-	ls = self.addSwitch('s2', cls=LinuxBridge) # it acts as a normal switch
+        # it acts as a normal switch
+	ls = self.addSwitch('s2', cls=OVSBridge)#OVSSwitch)
 
 	self.addLink( ls, r1, intfName2='r1-eth2', params2={ 'ip' : '10.0.2.1/24' } )
 	self.addLink( ls, r2, intfName2='r2-eth2', params2={ 'ip' : '10.0.2.2/24' } )
