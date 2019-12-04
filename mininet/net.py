@@ -26,7 +26,7 @@ class NetworkTopo( Topo ):
         r1 = self.addNode( 'r1', cls=LinuxRouter, ip='10.0.1.1' )
 	r2 = self.addNode( 'r2', cls=LinuxRouter, ip='10.0.1.2' )
 
-        h1 = self.addHost( 'h11', ip='10.0.1.3/24', mac='00:00:00:00:00:00:00:01', defaultRoute='via 10.0.1.1' )
+        h1 = self.addHost( 'h11', ip='10.0.1.3/24', defaultRoute='via 10.0.1.1' )
         h2 = self.addHost( 'h12', ip='10.0.1.4/24', defaultRoute='via 10.0.1.1' )
         h3 = self.addHost( 'h13', ip='10.0.1.5/24', defaultRoute='via 10.0.1.1' )
 
