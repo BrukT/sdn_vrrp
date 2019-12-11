@@ -13,6 +13,7 @@ class LinuxRouter( Node ):
         super( LinuxRouter, self).config( **params )
         # Enable forwarding on the router
         self.cmd( 'sysctl net.ipv4.ip_forward=1' )
+        self.cmd( 'python vrrpc.py &' )
 
     def terminate( self ):
         self.cmd( 'sysctl net.ipv4.ip_forward=0' )
