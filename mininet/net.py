@@ -23,8 +23,8 @@ class NetworkTopo( Topo ):
     "Two LinuxRouter connecting two IP subnets"
 
     def build( self, **_opts ):
-        r1 = self.addNode( 'r1', cls=LinuxRouter, ip='10.0.1.1', mac='00:00:00:00:00:01' )
-	r2 = self.addNode( 'r2', cls=LinuxRouter, ip='10.0.1.2', mac='00:00:00:00:00:02' )
+        r1 = self.addNode( 'r1', cls=LinuxRouter, ip='10.0.1.1/24', mac='00:00:00:00:00:01' )
+	r2 = self.addNode( 'r2', cls=LinuxRouter, ip='10.0.1.2/24', mac='00:00:00:00:00:02' )
 
 	# network A
         h1 = self.addHost( 'h11', ip='10.0.1.3/24', mac='00:00:00:00:00:11', defaultRoute='via 10.0.1.10' )
