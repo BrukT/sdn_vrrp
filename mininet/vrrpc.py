@@ -1,7 +1,7 @@
 import socket
 import time
 
-DST_ADDR = '10.0.2.255'
+DST_ADDR = '10.0.1.255'
 DST_PORT = 2020
 
 i = 0

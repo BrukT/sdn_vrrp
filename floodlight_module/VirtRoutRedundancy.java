@@ -70,9 +70,12 @@ protected IFloodlightProviderService floodlightProvider; // Reference to the pro
 	private final static MacAddress SWITCH_MAC =  MacAddress.of("00:00:00:00:00:21");
 	private static MacAddress ROUTER_MAC;
 	private static IPv4Address ROUTER_IP;
-	private static Date date = new Date();
-	private long seen_time = date.getTime();
-	private long waiting_period = 3;
+	
+	private static MacAddress REQUESTER_MAC = MacAddress.of("FF:FF:FF:FF:FF:FF");
+	private static IPv4Address REQUESTER_IP = IPv4Address.of("10.0.1.255");
+	//private Date date = new Date();
+	private static long seen_time;
+	private long waiting_period = 3000;
 	
 
 	@Override
@@ -146,49 +149,35 @@ protected IFloodlightProviderService floodlightProvider; // Reference to the pro
 					ARP arpRequest = (ARP) eth.getPayload();						
 					if((arpRequest.getTargetProtocolAddress().compareTo(VIRTUAL_ROUTER_IP) == 0)){					
 						// Process ARP request
-						handleARPRequest(sw, pi, cntx);					
-						// Interrupt the chain
-						return Command.STOP;
-					}
-					else if(eth.getSourceMACAddress().compareTo(PRIMARY_ROUTER_MAC) == 0){					
-						// Process ARP request
-						handleARPRequestAD(sw, pi, cntx);					
+						handleARPRequest(sw, pi.getMatch().get(MatchField.IN_PORT), cntx);					
 						// Interrupt the chain
 						return Command.STOP;
 					}
 				}
+				 if (pkt instanceof IPv4) {										
+						IPv4 ip_pkt = (IPv4) pkt;
+						System.out.printf("Processing IPv4 packet in RoutRedudancy\n");	
+						if((ip_pkt.getDestinationAddress().compareTo(ADVERT_DESTN) == 0)) {
+							handleAdvert(sw, pi, cntx);						
+						// Interrupt the chain
+							return Command.STOP;
+						}
+				 } 
 			} 
 			else {
-			  if (pkt instanceof IPv4) {										
-				IPv4 ip_pkt = (IPv4) pkt;
-				System.out.printf("Processing IPv4 packet in RoutRedudancy\n");	
-				if((ip_pkt.getDestinationAddress().compareTo(ADVERT_DESTN) == 0)) {
-					handleAdvert(sw, pi, cntx);						
-				// Interrupt the chain
-					return Command.STOP;
-				}
-			} 
+			 
 			}
 			// Interrupt the chain
 			return Command.CONTINUE;
 
 	}
 
-	private void handleARPRequestAD(IOFSwitch sw, OFPacketIn pi, FloodlightContext cntx) {
+	private void handleARPRequest(IOFSwitch sw, OFPort port, FloodlightContext cntx) {
 		// Double check that the payload is ARP
 		Ethernet eth = IFloodlightProviderService.bcStore.get(cntx, IFloodlightProviderService.CONTEXT_PI_PAYLOAD);		
-		if (! (eth.getPayload() instanceof ARP))
-			return;	
-		
-		handleAdvert(sw, pi, cntx);	
-	}
-
-	private void handleARPRequest(IOFSwitch sw, OFPacketIn pi,	FloodlightContext cntx) {
-		// Double check that the payload is ARP
-		Ethernet eth = IFloodlightProviderService.bcStore.get(cntx, IFloodlightProviderService.CONTEXT_PI_PAYLOAD);		
-		if (! (eth.getPayload() instanceof ARP))
-			return;	
-		
+		//if (! (eth.getPayload() instanceof ARP))
+			//return;	
+		if (eth.getPayload() instanceof ARP) {
 		// Cast the ARP request
 				ARP arpRequest = (ARP) eth.getPayload();
 		
@@ -197,7 +186,7 @@ protected IFloodlightProviderService floodlightProvider; // Reference to the pro
 			//return;
 		// Generate ARP reply
 		IPacket arpReply = new Ethernet()
-			.setSourceMACAddress(PRIMARY_ROUTER_MAC)
+			.setSourceMACAddress(ROUTER_MAC)
 			.setDestinationMACAddress(eth.getSourceMACAddress())
 			.setEtherType(EthType.ARP)
 			.setPriorityCode(eth.getPriorityCode())
@@ -208,11 +197,12 @@ protected IFloodlightProviderService floodlightProvider; // Reference to the pro
 				.setHardwareAddressLength((byte) 6)
 				.setProtocolAddressLength((byte) 4)
 				.setOpCode(ARP.OP_REPLY)
-				.setSenderHardwareAddress(PRIMARY_ROUTER_MAC) // Set my MAC address
+				.setSenderHardwareAddress(ROUTER_MAC) // Set my MAC address
 				.setSenderProtocolAddress(VIRTUAL_ROUTER_IP) // Set my IP address
 				.setTargetHardwareAddress(arpRequest.getSenderHardwareAddress())
 				.setTargetProtocolAddress(arpRequest.getSenderProtocolAddress()));
 		
+		//save the requester 
 		// Create the Packet-Out and set basic data for it (buffer id and in port)
 		OFPacketOut.Builder pob = sw.getOFFactory().buildPacketOut();
 		pob.setBufferId(OFBufferId.NO_BUFFER);
@@ -220,7 +210,7 @@ protected IFloodlightProviderService floodlightProvider; // Reference to the pro
 		
 		// Create action -> send the packet back from the source port
 		OFActionOutput.Builder actionBuilder = sw.getOFFactory().actions().buildOutput();
-		OFPort inPort =  pi.getMatch().get(MatchField.IN_PORT);
+		OFPort inPort =  port;
         actionBuilder.setPort(inPort);  
 		
 		// Assign the action
@@ -233,6 +223,46 @@ protected IFloodlightProviderService floodlightProvider; // Reference to the pro
 		System.out.printf("Sending out ARP reply in Rout Redundancy to the Host\n");
 		
 		sw.write(pob.build());
+		}
+		else if (eth.getPayload() instanceof IPv4){
+			IPv4 ip_pkt = (IPv4)eth.getPayload();
+			IPacket arpReply = new Ethernet()
+					.setSourceMACAddress(ROUTER_MAC)
+					.setDestinationMACAddress(REQUESTER_MAC)
+					.setEtherType(EthType.ARP)
+					.setPriorityCode(eth.getPriorityCode())
+					.setPayload(
+						new ARP()
+						.setHardwareType(ARP.HW_TYPE_ETHERNET)
+						.setProtocolType(ARP.PROTO_TYPE_IP)
+						.setHardwareAddressLength((byte) 6)
+						.setProtocolAddressLength((byte) 4)
+						.setOpCode(ARP.OP_REPLY)
+						.setSenderHardwareAddress(ROUTER_MAC) // Set my MAC address
+						.setSenderProtocolAddress(VIRTUAL_ROUTER_IP) // Set my IP address
+						.setTargetHardwareAddress(REQUESTER_MAC)
+						.setTargetProtocolAddress(REQUESTER_IP));
+				
+				// Create the Packet-Out and set basic data for it (buffer id and in port)
+				OFPacketOut.Builder pob = sw.getOFFactory().buildPacketOut();
+				pob.setBufferId(OFBufferId.NO_BUFFER);
+				pob.setInPort(OFPort.ANY);
+				
+				System.out.println("Broadcasting MAC with arp" + ROUTER_MAC + " at port :" + port);
+				
+				// Create action -> send the packet back from the source port
+				OFActionOutput.Builder actionBuilder = sw.getOFFactory().actions().buildOutput();
+		        actionBuilder.setPort(OFPort.ANY);  
+				
+				// Assign the action
+				pob.setActions(Collections.singletonList((OFAction) actionBuilder.build()));
+				
+				// Set the ARP reply as packet data 
+				byte[] packetData = arpReply.serialize();
+				pob.setData(packetData);
+				
+				sw.write(pob.build());
+		}
 		
 	}
 
@@ -246,21 +276,30 @@ protected IFloodlightProviderService floodlightProvider; // Reference to the pro
 		if(ROUTER_MAC == null ) {
 			System.out.println("ADVERT: Assigning the first MAC :" + eth.getSourceMACAddress());
 			ROUTER_MAC = eth.getSourceMACAddress();
+			Date date = new Date();
 			seen_time = date.getTime();
 			// Cast the IP packet
 			IPv4 ipv4 = (IPv4) eth.getPayload();
 			ROUTER_IP = ipv4.getSourceAddress();
 		}else {
-			System.out.println("ADVERT: after second time MAC advert");
+			System.out.println("ADVERT: after second time MAC advert from: " + eth.getSourceMACAddress());
 			if(eth.getSourceMACAddress().compareTo(ROUTER_MAC) == 0) {
+				System.out.println("ADVERT: No MAC update and remain: " + eth.getSourceMACAddress());
+				Date date = new Date();
 				seen_time = date.getTime();
 			}
-			else if(eth.getSourceMACAddress().compareTo(ROUTER_MAC) != 0) {
+			else {
+				Date date = new Date();
 				long temp = date.getTime();
+				System.out.println("ADVERT: condition :" + ((temp - seen_time) > waiting_period) +":: temp equals ::" + temp + "last seen time :" + seen_time);
 				if((temp - seen_time) > waiting_period) {
-					System.out.println("changing mac address from " + ROUTER_MAC + " to " + eth.getSourceMACAddress());
-					ROUTER_MAC = eth.getSourceMACAddress();
 					
+					ROUTER_MAC = eth.getSourceMACAddress();
+					IPv4 ipv4 = (IPv4) eth.getPayload();
+					ROUTER_IP = ipv4.getSourceAddress();
+					seen_time = temp;
+					System.out.println("changed the mac address to " + ROUTER_MAC);
+					handleARPRequest(sw, OFPort.ANY, cntx);
 				}
 			}
 				
