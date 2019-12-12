@@ -19,6 +19,16 @@ class LinuxRouter( Node ):
         self.cmd( 'sysctl net.ipv4.ip_forward=0' )
         super( LinuxRouter, self ).terminate()
 
+class LinuxServer( Node ):
+	def config( self, **params):
+		super( LinuxServer, self ).config( **params )
+		# add the two routers has gateways for troubleshooting
+		self.cmd("route add default gw 10.0.2.1")
+		self.cmd("route add default gw 10.0.2.2")
+
+	def terminate( self ):
+		super( LinuxServer, self ).terminate()
+
 class NetworkTopo( Topo ):
     "Two LinuxRouter connecting two IP subnets"
 
@@ -28,8 +38,8 @@ class NetworkTopo( Topo ):
 
 	# network A
         h1 = self.addHost( 'h11', ip='10.0.1.3/24', mac='00:00:00:00:00:11', defaultRoute='via 10.0.1.10' )
-        h2 = self.addHost( 'h12', ip='10.0.1.4/24', mac='00:00:00:00:00:12', defaultRoute='via 10.0.1.1' )
-        h3 = self.addHost( 'h13', ip='10.0.1.5/24', mac='00:00:00:00:00:13', defaultRoute='via 10.0.1.1' )
+        h2 = self.addHost( 'h12', ip='10.0.1.4/24', mac='00:00:00:00:00:12', defaultRoute='via 10.0.1.10' )
+        h3 = self.addHost( 'h13', ip='10.0.1.5/24', mac='00:00:00:00:00:13', defaultRoute='via 10.0.1.10' )
 
         ss = self.addSwitch('s1')
 
@@ -41,8 +51,8 @@ class NetworkTopo( Topo ):
         self.addLink(h3, ss)
 
 	# network B
-	s1 = self.addHost( 'h21', ip='10.0.2.3/24', mac='00:00:00:00:00:21', defaultRoute='via 10.0.2.1' )
-	s2 = self.addHost( 'h22', ip='10.0.2.4/24', mac='00:00:00:00:00:22', defaultRoute='via 10.0.2.1' )
+	s1 = self.addNode( 'h21', cls=LinuxServer, ip='10.0.2.3/24', mac='00:00:00:00:00:21' )
+	s2 = self.addNode( 'h22', cls=LinuxServer, ip='10.0.2.4/24', mac='00:00:00:00:00:22' )
 
 	ls = self.addSwitch('s2', cls=OVSBridge) # it acts as a normal switch
 

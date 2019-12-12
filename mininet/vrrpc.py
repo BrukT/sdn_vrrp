@@ -1,7 +1,7 @@
 import socket
 import time
 
-DST_ADDR = '10.0.2.255'
+DST_ADDR = '10.0.1.255'
 DST_PORT = 2020
 
 i = 0
@@ -14,6 +14,6 @@ while True:
     sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
     sock.sendto("hello world " + str(i) + '\n', (DST_ADDR, DST_PORT))
 
-    time.sleep(2)
+    time.sleep(1)
 
 
