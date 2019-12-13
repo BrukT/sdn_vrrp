@@ -13,7 +13,7 @@ while True:
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
     try:
-    	sock.sendto("hello world " + str(i) + '\n', (DST_ADDR, DST_PORT))
+    	sock.sendto('ADV\n', (DST_ADDR, DST_PORT))
     except Exception as e:
 		print(e)
 

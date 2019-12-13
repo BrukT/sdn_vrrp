@@ -40,10 +40,12 @@ import net.floodlightcontroller.core.module.FloodlightModuleException;
 import net.floodlightcontroller.core.module.IFloodlightModule;
 import net.floodlightcontroller.core.module.IFloodlightService;
 import net.floodlightcontroller.packet.ARP;
+import net.floodlightcontroller.packet.Data;
 import net.floodlightcontroller.packet.Ethernet;
 import net.floodlightcontroller.packet.ICMP;
 import net.floodlightcontroller.packet.IPacket;
 import net.floodlightcontroller.packet.IPv4;
+import net.floodlightcontroller.packet.PacketParsingException;
 import net.floodlightcontroller.packet.UDP;
 import net.floodlightcontroller.util.FlowModUtils;
 
@@ -51,16 +53,22 @@ public class VirtualRouterRedundancyManager implements IOFMessageListener, IFloo
 	protected IFloodlightProviderService floodlightProvider;
 	// VIRTUAL ROUTER
 	private final IPv4Address VIRTUAL_ROUTER_IP = IPv4Address.of("10.0.1.10");
+	/*
+	 * Primary Router is the one that have the max priority and when active
+	 * it has to be always the Mater router. We will implement preemption mode.
+	 */
+	private IPv4Address PRIMARY_ROUTER_IP = IPv4Address.of("10.0.1.1");
 	
 	private IPv4Address MASTER_ROUTER_IP;
 	private MacAddress MASTER_ROUTER_MAC;
+	private final IPv4Address BROADCAST = IPv4Address.of("10.0.1.255");
 	/*
 	 * Last time that the controller received an ADV from the Master
 	 */
 	private long LAST_MASTER_ADV;
 	/* 
 	 * Time interval for Controller to declare Master down. 
-	 * 1 because it is supposed the master to send an ADV every second.
+	 * 1 because it is supposed the Master to send an ADV every second.
 	 */
 	private final int MASTER_DOWN_INTERVAL = 1; 
 	
@@ -116,36 +124,27 @@ public class VirtualRouterRedundancyManager implements IOFMessageListener, IFloo
 		Ethernet eth = IFloodlightProviderService.bcStore.get(cntx, IFloodlightProviderService.CONTEXT_PI_PAYLOAD);
 		IPacket pkt = eth.getPayload();
 		
-		//System.out.printf("==== Received packet-in ====\n");
-		
-		
-		//System.out.printf("[MAC] source address: %s\n", eth.getSourceMACAddress());
-		//System.out.printf("[MAC] dest address: %s\n", eth.getDestinationMACAddress());
-		
-		
 		if (eth.isBroadcast() || eth.isMulticast()) {
 			if (pkt instanceof ARP) {
-				/*
-				 * ARP request from hosts
-				 */
 				handleARPRequest(sw, msg, cntx);
 				return Command.STOP;
 			}
-
+			
 			if (pkt instanceof IPv4) {
 				IPv4 ipv4 = (IPv4) pkt;
 				if (ipv4.getPayload() instanceof UDP) {
 					UDP udp = (UDP) ipv4.getPayload();
 					/*
-					 * Check if it is an ADV packet
+					 * Check if it is an ADV packet by port comparison
 					 */
 					if (udp.getDestinationPort().compareTo(TransportPort.of(2020)) == 0){
 						handleAdvertisement(sw, eth);
 						return Command.STOP;
 					}
 				}
-			}	
+			}
 		}
+	
 		return Command.CONTINUE;
 	}
 	
@@ -160,10 +159,15 @@ public class VirtualRouterRedundancyManager implements IOFMessageListener, IFloo
 		if (arpRequest.getTargetProtocolAddress().compareTo(VIRTUAL_ROUTER_IP) != 0)
 			return;
 		
+		/*
+		 * Reply ARP requests only for the Virtual Router
+		 */
+		
 		OFPacketIn pi = (OFPacketIn)msg;
 		
 		// Replay on behalf of MASTER_ROUTER
-		System.out.printf("[DBG] MAC Master: %s - IP Master: %s\n", MASTER_ROUTER_MAC, MASTER_ROUTER_IP);
+		if (MASTER_ROUTER_IP != null)
+			System.out.printf("[ARP] %s: %s - %s\n", VIRTUAL_ROUTER_IP, MASTER_ROUTER_MAC, MASTER_ROUTER_IP);
 		IPacket arpReply = new Ethernet()
 				.setSourceMACAddress(MASTER_ROUTER_MAC)
 				.setDestinationMACAddress(eth.getSourceMACAddress())
@@ -202,9 +206,10 @@ public class VirtualRouterRedundancyManager implements IOFMessageListener, IFloo
 						.setSenderHardwareAddress(MASTER_ROUTER_MAC)
 						.setSenderProtocolAddress(VIRTUAL_ROUTER_IP)
 						.setTargetHardwareAddress(MacAddress.BROADCAST)
-						.setTargetProtocolAddress(IPv4Address.of("10.0.1.255"))
+						.setTargetProtocolAddress(BROADCAST)
 				);
 		
+		System.out.printf("[ARP] Gratuitous entry: %s: %s - %s\n", VIRTUAL_ROUTER_IP, MASTER_ROUTER_MAC, MASTER_ROUTER_IP);
 		sendPacketOut(sw, OFPort.FLOOD, arpRequest);
 	}
 	
@@ -216,8 +221,6 @@ public class VirtualRouterRedundancyManager implements IOFMessageListener, IFloo
 		 * You are here because the controller received a broadcast UDP packet on port 2020
 		 */
 		long timestamp = (new Date()).getTime(); 
-		//System.out.printf("[%d][P] Handling advertisement from %s\n", timestamp, pkt.getSourceAddress());
-		//System.out.printf("[P] Master seen %d ms ago\n", (timestamp - LAST_MASTER_ADV));
 		if (MASTER_ROUTER_IP == null) {
 			/*
 			 * The Master has not been initialized yet
@@ -250,6 +253,20 @@ public class VirtualRouterRedundancyManager implements IOFMessageListener, IFloo
 			return;
 		}
 		
+		/* 
+		 * Preemption:
+		 * if the controller receive an ADV from the router with higher priority
+		 * but actually it is the Backup router, it will become the Master 
+		 */
+		if (pkt.getSourceAddress().compareTo(PRIMARY_ROUTER_IP) == 0 && MASTER_ROUTER_IP.compareTo(PRIMARY_ROUTER_IP) != 0) {
+			System.out.printf("[P] Preemption: %s became the Master\n", PRIMARY_ROUTER_IP);
+			MASTER_ROUTER_IP = pkt.getSourceAddress();
+			MASTER_ROUTER_MAC = eth.getSourceMACAddress();
+			LAST_MASTER_ADV = timestamp;
+			sendGratuitousARPRequest(sw);
+			return;
+		}
+		
 	}
 	
 	private void sendPacketOut(IOFSwitch sw, OFPort port, IPacket reply) {
@@ -267,7 +284,7 @@ public class VirtualRouterRedundancyManager implements IOFMessageListener, IFloo
 		byte[] packetData = reply.serialize();
 		pob.setData(packetData);
 		
-		System.out.printf("sending packet-out on port {%s}\n", port.toString());
+		System.out.printf("[ARP] Sending packet-out on port {%s}\n", port.toString());
 				
 		// Send packet
 		sw.write(pob.build());
