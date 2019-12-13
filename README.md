@@ -1,10 +1,10 @@
 # Simulating Virtual Router Redundancy Protocol in a SDN environment
 
-The aim of this project is to offer a centralized solution in a Software Defined Network environment for solving the First Hop Redundancy (FHR) issue. The OpenFlow controller has been implemented using the Floodlight Java framework.
+The aim of this project is to offer a centralized solution in a Software Defined Network environment for solving the First Hop Redundancy (FHR) issue. It has been realized using the Floodlight Java framework which implements OpenFlow controllers.
 
 ## Controller
 
-Floodlight provides itself an implementation of some basic operations implemented by controllers. We added our custom module in the pipeline adding the line `net.floodlightcontroller.unipi.vrrp.VirtualRouterRedundancyManager` in two configuration files just at the end of the list:
+Floodlight provides itself an implementation of some basic operations performed by controllers. We added our custom module in the pipeline adding the line `net.floodlightcontroller.unipi.ce.anaws.vrrm.VirtualRouterRedundancyManager` in two configuration files just at the end of the list:
   - `src/main/resources/META-INF/services/net.floodlight.core.module.IFloodlightModule`;
   - `src/main/resources/floodlightdefault.properties`.
   
@@ -47,10 +47,12 @@ on_receive(source):
   else if LAST_MASTER_ADV - time.now > 1:
     MASTER_ROUTER = source
     LAST_MASTER_ADV = time.now
+    flood(MASTER_ROUTER_MAC)
     
   else if source is PRIMARY_ROUTER and PRIMARY_ROUTER is not MASTER_ROUTER:
     MASTER_ROUTER = source
     LAST_MASTER_ADV = time.now
+    flood(MASTER_ROUTER_MAC)
 ```
 
 ### ARP Replys
@@ -64,7 +66,7 @@ In order to check the correcteness of the protocol just generate a data flow bet
 On `h21` type:
 
 ```
-$ iperf -u -s
+$ iperf -u -s -i 1
 ```
 
 and then on `h11` type:
