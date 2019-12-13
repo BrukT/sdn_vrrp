@@ -11,10 +11,9 @@ Floodlight provides itself an implementation of some basic operations performed 
 Running the application we will make the controller available for connections on `127.0.0.1:6653`.
 
 ## Network
-The network is simulated through the mininet tool which also allows us to build our own net through a python script. Mininet can provide a connection between the switches in the net and the OpenFlow controller. Our purpose is to use the controller only to manage one of the two swithes present in the net.
+The network is simulated through the mininet tool which also allows us to build our own net through a python script. Mininet can provide a connection between the switches in the net and the OpenFlow controller. Our purpose is to use the controller only to manage one of the two switches present in the net, in particular the switch in the subnet `10.0.1.0/24`, as shown in the picture.
 
-![Network]
-(img/vrrm.png)
+![Network](/doc/img/vrrm.png)
 
 For running the net you must go in the `mininet` directory and type:
 ```
