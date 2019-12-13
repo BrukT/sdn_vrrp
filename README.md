@@ -14,7 +14,7 @@ Running the application we will make the controller available for connections on
 The network is simulated through the mininet tool which also allows us to build our own net through a python script. Mininet can provide a connection between the switches in the net and the OpenFlow controller. Our purpose is to use the controller only to manage one of the two swithes present in the net.
 
 ![Network]
-(doc/img/vrrm.png)
+(/doc/img/vrrm.png)
 
 For running the net you must go in the `mininet` directory and type:
 ```
