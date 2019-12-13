@@ -4,7 +4,7 @@ The aim of this project is to offer a centralized solution in a Software Defined
 
 ## Controller
 
-Floodlight provides itself an implementation of some basic operations performed by controllers. We added our custom module in the pipeline adding the line `net.floodlightcontroller.unipi.ce.anaws.vrrm.VirtualRouterRedundancyManager` in two configuration files just at the end of the list:
+Floodlight provides itself an implementation of some basic operations performed by controllers. We added our custom module in the pipeline adding the line `it.unipi.ce.anaws.vrrm.VirtualRouterRedundancyManager` in two configuration files just at the end of the list:
   - `src/main/resources/META-INF/services/net.floodlight.core.module.IFloodlightModule`;
   - `src/main/resources/floodlightdefault.properties`.
   
@@ -33,7 +33,7 @@ If the controller receives an _ADV_ from the _Backup_ router and it is not recei
 
 We implemented also a version with a _preemption mode_ in which it is possible to set a `PRIMARY_ROUTER` which, if for any reason has been demoted to _Backup_, if it becomes active again, the controller is able to promote it as _Master_ even if it is continuing to receive _ADVs_ from the current _Master_.
 
-### Algorithm in preusocode
+### Algorithm in pseudocode
 
 ```
 on_receive(source):
@@ -55,7 +55,7 @@ on_receive(source):
     flood(MASTER_ROUTER_MAC)
 ```
 
-### ARP Replys
+### ARP Replies
 
 Whenever the controller gets an ARP request for knowing which is the MAC address of the `VIRTUAL_ROUTER`, the controller will reply with the MAC address of the current `MASTER_ROUTER`.
 
