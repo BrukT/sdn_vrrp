@@ -1,6 +1,7 @@
 package it.unipi.ing.ce.anaws.vrrm;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.Date;
@@ -29,6 +30,7 @@ import net.floodlightcontroller.core.module.FloodlightModuleException;
 import net.floodlightcontroller.core.module.IFloodlightModule;
 import net.floodlightcontroller.core.module.IFloodlightService;
 import net.floodlightcontroller.packet.ARP;
+import net.floodlightcontroller.packet.Data;
 import net.floodlightcontroller.packet.Ethernet;
 import net.floodlightcontroller.packet.IPacket;
 import net.floodlightcontroller.packet.IPv4;
@@ -55,7 +57,9 @@ public class VirtualRouterRedundancyManager implements IOFMessageListener, IFloo
 	 * Time interval for Controller to declare Master down. 
 	 * 1 because it is supposed the Master to send an ADV every second.
 	 */
-	private final int MASTER_DOWN_INTERVAL = 1; 
+	private final int MASTER_DOWN_INTERVAL = 1;
+	/* Magic number for Advertisement Packet */
+	private final byte[] MAGIC = {'A', 'D', 'V'};
 	
 	@Override
 	public String getName() {
@@ -120,11 +124,14 @@ public class VirtualRouterRedundancyManager implements IOFMessageListener, IFloo
 				if (ipv4.getPayload() instanceof UDP) {
 					UDP udp = (UDP) ipv4.getPayload();
 					/*
-					 * Check if it is an ADV packet by port comparison
+					 * Check if it is an ADV packet
 					 */
 					if (udp.getDestinationPort().compareTo(TransportPort.of(2020)) == 0){
-						handleAdvertisement(sw, eth);
-						return Command.STOP;
+						byte[] payload = udp.getPayload().serialize();
+						if (Arrays.equals(payload, MAGIC)) {
+							handleAdvertisement(sw, eth);
+							return Command.STOP;
+						}
 					}
 				}
 			}
@@ -211,7 +218,7 @@ public class VirtualRouterRedundancyManager implements IOFMessageListener, IFloo
 			return;
 		IPv4 pkt = (IPv4) eth.getPayload();
 		/*
-		 * You are here because the controller received a broadcast UDP packet on port 2020
+		 * You are here because the controller received an Advertisement-like packet
 		 */
 		long timestamp = (new Date()).getTime(); 
 		if (MASTER_ROUTER_IP == null) {
