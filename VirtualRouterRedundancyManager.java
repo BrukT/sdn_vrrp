@@ -155,19 +155,22 @@ public class VirtualRouterRedundancyManager implements IOFMessageListener, IFloo
 			return;
 		
 		ARP arpRequest = (ARP) eth.getPayload();
+		
 		System.out.println("[I] Handling ARP request for " + arpRequest.getTargetProtocolAddress());
 		if (arpRequest.getTargetProtocolAddress().compareTo(VIRTUAL_ROUTER_IP) != 0)
 			return;
 		
+		if (MASTER_ROUTER_IP == null)
+			return;
+		
 		/*
-		 * Reply ARP requests only for the Virtual Router
+		 * Reply ARP requests only for the Virtual Router 
+		 * and the Master has been elected
 		 */
 		
 		OFPacketIn pi = (OFPacketIn)msg;
 		
 		// Replay on behalf of MASTER_ROUTER
-		if (MASTER_ROUTER_IP != null)
-			System.out.printf("[ARP] %s: %s - %s\n", VIRTUAL_ROUTER_IP, MASTER_ROUTER_MAC, MASTER_ROUTER_IP);
 		IPacket arpReply = new Ethernet()
 				.setSourceMACAddress(MASTER_ROUTER_MAC)
 				.setDestinationMACAddress(eth.getSourceMACAddress())
@@ -186,6 +189,7 @@ public class VirtualRouterRedundancyManager implements IOFMessageListener, IFloo
 						.setTargetProtocolAddress(arpRequest.getSenderProtocolAddress())
 				);
 		
+		System.out.printf("[ARP] %s: %s - %s\n", VIRTUAL_ROUTER_IP, MASTER_ROUTER_MAC, MASTER_ROUTER_IP);
 		sendPacketOut(sw, pi.getMatch().get(MatchField.IN_PORT), arpReply);
 	}
 	
