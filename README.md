@@ -13,6 +13,9 @@ Running the application we will make the controller available for connections on
 ## Network
 The network is simulated through the mininet tool which also allows us to build our own net through a python script. Mininet can provide a connection between the switches in the net and the OpenFlow controller. Our purpose is to use the controller only to manage one of the two swithes present in the net.
 
+![Network]
+(img/vrrm.png)
+
 For running the net you must go in the `mininet` directory and type:
 ```
 $ sudo python net.py
@@ -29,7 +32,7 @@ Every time the controller receives an _ADV_ form the _Master_, it updates the va
 
 If the controller receives an _ADV_ from the _Backup_ router and it is not receiving _ADVs_ from the _Master_ for a period greater than the _ADV interval_ (that we set to `1`), it will promote the _Backup_ to _Master_. Moreover the controller will flood the new _Master_ MAC address to all the hosts.
 
-### Preempiton mode
+### Preemption mode
 
 We implemented also a version with a _preemption mode_ in which it is possible to set a `PRIMARY_ROUTER` which, if for any reason has been demoted to _Backup_, if it becomes active again, the controller is able to promote it as _Master_ even if it is continuing to receive _ADVs_ from the current _Master_.
 
