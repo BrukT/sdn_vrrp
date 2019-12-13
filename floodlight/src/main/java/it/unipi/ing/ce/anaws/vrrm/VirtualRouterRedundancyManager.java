@@ -1,40 +1,30 @@
-package net.floodlightcontroller.unipi.vrrm;
+package it.unipi.ing.ce.anaws.vrrm;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.Date;
 import java.util.Map;
 
-import org.projectfloodlight.openflow.protocol.OFFlowAdd;
-import org.projectfloodlight.openflow.protocol.OFFlowMod;
 import org.projectfloodlight.openflow.protocol.OFMessage;
 import org.projectfloodlight.openflow.protocol.OFPacketIn;
 import org.projectfloodlight.openflow.protocol.OFPacketOut;
 import org.projectfloodlight.openflow.protocol.OFType;
 import org.projectfloodlight.openflow.protocol.action.OFAction;
 import org.projectfloodlight.openflow.protocol.action.OFActionOutput;
-import org.projectfloodlight.openflow.protocol.action.OFActionSetField;
-import org.projectfloodlight.openflow.protocol.action.OFActions;
-import org.projectfloodlight.openflow.protocol.match.Match;
 import org.projectfloodlight.openflow.protocol.match.MatchField;
-import org.projectfloodlight.openflow.protocol.oxm.OFOxms;
 import org.projectfloodlight.openflow.types.EthType;
 import org.projectfloodlight.openflow.types.IPv4Address;
-import org.projectfloodlight.openflow.types.IpProtocol;
 import org.projectfloodlight.openflow.types.MacAddress;
 import org.projectfloodlight.openflow.types.OFBufferId;
 import org.projectfloodlight.openflow.types.OFPort;
 import org.projectfloodlight.openflow.types.TransportPort;
-import org.projectfloodlight.openflow.types.U64;
-
-import com.kenai.jaffl.Address;
 
 import net.floodlightcontroller.core.FloodlightContext;
 import net.floodlightcontroller.core.IFloodlightProviderService;
 import net.floodlightcontroller.core.IOFMessageListener;
 import net.floodlightcontroller.core.IOFSwitch;
-import net.floodlightcontroller.core.IListener.Command;
 import net.floodlightcontroller.core.module.FloodlightModuleContext;
 import net.floodlightcontroller.core.module.FloodlightModuleException;
 import net.floodlightcontroller.core.module.IFloodlightModule;
@@ -42,12 +32,9 @@ import net.floodlightcontroller.core.module.IFloodlightService;
 import net.floodlightcontroller.packet.ARP;
 import net.floodlightcontroller.packet.Data;
 import net.floodlightcontroller.packet.Ethernet;
-import net.floodlightcontroller.packet.ICMP;
 import net.floodlightcontroller.packet.IPacket;
 import net.floodlightcontroller.packet.IPv4;
-import net.floodlightcontroller.packet.PacketParsingException;
 import net.floodlightcontroller.packet.UDP;
-import net.floodlightcontroller.util.FlowModUtils;
 
 public class VirtualRouterRedundancyManager implements IOFMessageListener, IFloodlightModule {
 	protected IFloodlightProviderService floodlightProvider;
@@ -70,7 +57,9 @@ public class VirtualRouterRedundancyManager implements IOFMessageListener, IFloo
 	 * Time interval for Controller to declare Master down. 
 	 * 1 because it is supposed the Master to send an ADV every second.
 	 */
-	private final int MASTER_DOWN_INTERVAL = 1; 
+	private final int MASTER_DOWN_INTERVAL = 1;
+	/* Magic number for Advertisement Packet */
+	private final byte[] MAGIC = {'A', 'D', 'V'};
 	
 	@Override
 	public String getName() {
@@ -126,8 +115,8 @@ public class VirtualRouterRedundancyManager implements IOFMessageListener, IFloo
 		
 		if (eth.isBroadcast() || eth.isMulticast()) {
 			if (pkt instanceof ARP) {
-				handleARPRequest(sw, msg, cntx);
-				return Command.STOP;
+				if (handleARPRequest(sw, msg, cntx) == Command.STOP)
+					return Command.STOP;				
 			}
 			
 			if (pkt instanceof IPv4) {
@@ -135,11 +124,14 @@ public class VirtualRouterRedundancyManager implements IOFMessageListener, IFloo
 				if (ipv4.getPayload() instanceof UDP) {
 					UDP udp = (UDP) ipv4.getPayload();
 					/*
-					 * Check if it is an ADV packet by port comparison
+					 * Check if it is an ADV packet
 					 */
 					if (udp.getDestinationPort().compareTo(TransportPort.of(2020)) == 0){
-						handleAdvertisement(sw, eth);
-						return Command.STOP;
+						byte[] payload = udp.getPayload().serialize();
+						if (Arrays.equals(payload, MAGIC)) {
+							handleAdvertisement(sw, eth);
+							return Command.STOP;
+						}
 					}
 				}
 			}
@@ -149,19 +141,22 @@ public class VirtualRouterRedundancyManager implements IOFMessageListener, IFloo
 	}
 	
 	
-	public void handleARPRequest(IOFSwitch sw, OFMessage msg, FloodlightContext cntx) {
+	public Command handleARPRequest(IOFSwitch sw, OFMessage msg, FloodlightContext cntx) {
 		Ethernet eth = IFloodlightProviderService.bcStore.get(cntx, IFloodlightProviderService.CONTEXT_PI_PAYLOAD);
 		if (! (eth.getPayload() instanceof ARP))
-			return;
+			return Command.CONTINUE;
 		
 		ARP arpRequest = (ARP) eth.getPayload();
 		
-		System.out.println("[I] Handling ARP request for " + arpRequest.getTargetProtocolAddress());
-		if (arpRequest.getTargetProtocolAddress().compareTo(VIRTUAL_ROUTER_IP) != 0)
-			return;
+		System.out.print("[I] Handling ARP request for " + arpRequest.getTargetProtocolAddress() + ": ");
+		if (arpRequest.getTargetProtocolAddress().compareTo(VIRTUAL_ROUTER_IP) != 0) {
+			System.out.println("don't care");
+			return Command.CONTINUE;
+		}
+		System.out.println("ok");
 		
 		if (MASTER_ROUTER_IP == null)
-			return;
+			return Command.STOP;
 		
 		/*
 		 * Reply ARP requests only for the Virtual Router 
@@ -191,6 +186,7 @@ public class VirtualRouterRedundancyManager implements IOFMessageListener, IFloo
 		
 		System.out.printf("[ARP] %s: %s - %s\n", VIRTUAL_ROUTER_IP, MASTER_ROUTER_MAC, MASTER_ROUTER_IP);
 		sendPacketOut(sw, pi.getMatch().get(MatchField.IN_PORT), arpReply);
+		return Command.STOP;
 	}
 	
 	public void sendGratuitousARPRequest(IOFSwitch sw) {
@@ -222,7 +218,7 @@ public class VirtualRouterRedundancyManager implements IOFMessageListener, IFloo
 			return;
 		IPv4 pkt = (IPv4) eth.getPayload();
 		/*
-		 * You are here because the controller received a broadcast UDP packet on port 2020
+		 * You are here because the controller received an Advertisement-like packet
 		 */
 		long timestamp = (new Date()).getTime(); 
 		if (MASTER_ROUTER_IP == null) {
