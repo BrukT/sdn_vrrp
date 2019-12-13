@@ -111,8 +111,8 @@ public class VirtualRouterRedundancyManager implements IOFMessageListener, IFloo
 		
 		if (eth.isBroadcast() || eth.isMulticast()) {
 			if (pkt instanceof ARP) {
-				handleARPRequest(sw, msg, cntx);
-				return Command.STOP;
+				if (handleARPRequest(sw, msg, cntx) == Command.STOP)
+					return Command.STOP;				
 			}
 			
 			if (pkt instanceof IPv4) {
@@ -134,19 +134,22 @@ public class VirtualRouterRedundancyManager implements IOFMessageListener, IFloo
 	}
 	
 	
-	public void handleARPRequest(IOFSwitch sw, OFMessage msg, FloodlightContext cntx) {
+	public Command handleARPRequest(IOFSwitch sw, OFMessage msg, FloodlightContext cntx) {
 		Ethernet eth = IFloodlightProviderService.bcStore.get(cntx, IFloodlightProviderService.CONTEXT_PI_PAYLOAD);
 		if (! (eth.getPayload() instanceof ARP))
-			return;
+			return Command.CONTINUE;
 		
 		ARP arpRequest = (ARP) eth.getPayload();
 		
-		System.out.println("[I] Handling ARP request for " + arpRequest.getTargetProtocolAddress());
-		if (arpRequest.getTargetProtocolAddress().compareTo(VIRTUAL_ROUTER_IP) != 0)
-			return;
+		System.out.print("[I] Handling ARP request for " + arpRequest.getTargetProtocolAddress() + ": ");
+		if (arpRequest.getTargetProtocolAddress().compareTo(VIRTUAL_ROUTER_IP) != 0) {
+			System.out.println("don't care");
+			return Command.CONTINUE;
+		}
+		System.out.println("ok");
 		
 		if (MASTER_ROUTER_IP == null)
-			return;
+			return Command.STOP;
 		
 		/*
 		 * Reply ARP requests only for the Virtual Router 
@@ -176,6 +179,7 @@ public class VirtualRouterRedundancyManager implements IOFMessageListener, IFloo
 		
 		System.out.printf("[ARP] %s: %s - %s\n", VIRTUAL_ROUTER_IP, MASTER_ROUTER_MAC, MASTER_ROUTER_IP);
 		sendPacketOut(sw, pi.getMatch().get(MatchField.IN_PORT), arpReply);
+		return Command.STOP;
 	}
 	
 	public void sendGratuitousARPRequest(IOFSwitch sw) {
