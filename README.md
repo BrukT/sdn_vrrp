@@ -19,9 +19,11 @@ $ sudo python net.py
 ```
 It will connect the controller by itself.
 
+Each host in the subnet controlled by the OpenFlow controller has been configured with the default gateway `10.0.1.10` which corresponds to the IP address of the `VIRTUAL_ROUTER`.
+
 ## Centralized Redundancy Protocol
 
-Both of routers involved in the protocol start sending UDP advertisements in `broadcast` to port `2020` with an interval of `1` second. The controller will elect as _Master_ the router from which it received the _ADV_ first. The other will become the _Backup_ router. 
+Both routers involved in the protocol start sending UDP advertisements in `broadcast` to port `2020` with an interval of `1` second. The controller will elect as _Master_ the router from which it received the _ADV_ first. The other will become the _Backup_ router. 
 
 Every time the controller receives an _ADV_ form the _Master_, it updates the variable `LAST_MASTER_ADV` that represents the time in which it received the last _ADV_ from the _Master_.
 
@@ -54,3 +56,27 @@ on_receive(source):
 ### ARP Replys
 
 Whenever the controller gets an ARP request for knowing which is the MAC address of the `VIRTUAL_ROUTER`, the controller will reply with the MAC address of the current `MASTER_ROUTER`.
+
+## Troubleshooting
+
+In order to check the correcteness of the protocol just generate a data flow between the two networks using _iperf_ tool. In mininet, open `xterm` for `h11` and `h21`. 
+
+On `h21` type:
+
+```
+$ iperf -u -s
+```
+
+and then on `h11` type:
+
+```
+$ iperf -u -c 10.0.2.3 -i 1 -t 120
+```
+
+To simulate a failure of the link between `S1` and `R1` type:
+
+```
+mininet> link s1 r1 down
+```
+
+In the _iperf_ server you should notice a decreasing of traffic for a small period of time and then, as soon as the new _Master_ is elected, the flow restarts to increase.
