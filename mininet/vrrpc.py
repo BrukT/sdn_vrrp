@@ -15,7 +15,7 @@ while True:
     try:
     	sock.sendto('ADV\n', (DST_ADDR, DST_PORT))
     except Exception as e:
-		print(e)
+	print(e)
 
     time.sleep(1)
 
