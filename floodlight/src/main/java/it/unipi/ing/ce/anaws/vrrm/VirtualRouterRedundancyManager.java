@@ -1,10 +1,11 @@
-package it.unipi.ing.ce.anaws.vrrm;
+package it.unipi.ce.anaws.vrrm.VirtualRouterRedundancyManager;
 
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.Date;
+import java.util.HashMap;
 import java.util.Map;
 
 import org.projectfloodlight.openflow.protocol.OFMessage;
@@ -30,25 +31,27 @@ import net.floodlightcontroller.core.module.FloodlightModuleException;
 import net.floodlightcontroller.core.module.IFloodlightModule;
 import net.floodlightcontroller.core.module.IFloodlightService;
 import net.floodlightcontroller.packet.ARP;
-import net.floodlightcontroller.packet.Data;
 import net.floodlightcontroller.packet.Ethernet;
 import net.floodlightcontroller.packet.IPacket;
 import net.floodlightcontroller.packet.IPv4;
 import net.floodlightcontroller.packet.UDP;
+import net.floodlightcontroller.restserver.IRestApiService;
 
-public class VirtualRouterRedundancyManager implements IOFMessageListener, IFloodlightModule {
+public class VirtualRouterRedundancyManager implements IOFMessageListener, IFloodlightModule, IVirtualRouterRedundancyManagerREST {
 	protected IFloodlightProviderService floodlightProvider;
-	// VIRTUAL ROUTER
-	private final IPv4Address VIRTUAL_ROUTER_IP = IPv4Address.of("10.0.1.10");
+	protected IRestApiService restApiService;
+	// Virtual router
+	private IPv4Address VIRTUAL_ROUTER_IP = IPv4Address.of("10.0.1.10");
 	/*
 	 * Primary Router is the one that have the max priority and when active
-	 * it has to be always the Mater router. We will implement preemption mode.
+	 * it has to be always the Mater router.
+	 * It has meaning in the preemption mode.
 	 */
+	private boolean preemptionMode = false;
 	private IPv4Address PRIMARY_ROUTER_IP = IPv4Address.of("10.0.1.1");
 	
 	private IPv4Address MASTER_ROUTER_IP;
 	private MacAddress MASTER_ROUTER_MAC;
-	private final IPv4Address BROADCAST = IPv4Address.of("10.0.1.255");
 	/*
 	 * Last time that the controller received an ADV from the Master
 	 */
@@ -80,32 +83,36 @@ public class VirtualRouterRedundancyManager implements IOFMessageListener, IFloo
 
 	@Override
 	public Collection<Class<? extends IFloodlightService>> getModuleServices() {
-		// TODO Auto-generated method stub
+		Collection<Class<? extends IFloodlightService>> l = new ArrayList<Class<? extends IFloodlightService>>();
+		l.add(IVirtualRouterRedundancyManagerREST.class);
 		return null;
 	}
 
 	@Override
 	public Map<Class<? extends IFloodlightService>, IFloodlightService> getServiceImpls() {
-		// TODO Auto-generated method stub
-		return null;
+		Map<Class<? extends IFloodlightService>, IFloodlightService> m = new HashMap<Class<? extends IFloodlightService>, IFloodlightService>();
+		m.put(IVirtualRouterRedundancyManagerREST.class, this);
+		return m;
 	}
 
 	@Override
 	public Collection<Class<? extends IFloodlightService>> getModuleDependencies() {
 		Collection<Class<? extends IFloodlightService>> l = new ArrayList<Class<? extends IFloodlightService>>();
 		l.add(IFloodlightProviderService.class);
+		l.add(IRestApiService.class);
 		return l;
 	}
 
 	@Override
 	public void init(FloodlightModuleContext context) throws FloodlightModuleException {
 		floodlightProvider = context.getServiceImpl(IFloodlightProviderService.class);
+		restApiService = context.getServiceImpl(IRestApiService.class);
 	}
 
 	@Override
 	public void startUp(FloodlightModuleContext context) throws FloodlightModuleException {
 		floodlightProvider.addOFMessageListener(OFType.PACKET_IN,  this);
-		System.out.println("[I] Startup VRRM");
+		restApiService.addRestletRoutable(new VRRMWebRoutable());
 	}
 
 	@Override
@@ -115,7 +122,12 @@ public class VirtualRouterRedundancyManager implements IOFMessageListener, IFloo
 		
 		if (eth.isBroadcast() || eth.isMulticast()) {
 			if (pkt instanceof ARP) {
-				if (handleARPRequest(sw, msg, cntx) == Command.STOP)
+				if (handleARPRequest(sw, msg, cntx))
+					/* 
+					 * ARP request actually consumed:
+					 * It was for sure a request for 
+					 * the virtual router and the Master is set
+					 */
 					return Command.STOP;				
 			}
 			
@@ -141,22 +153,22 @@ public class VirtualRouterRedundancyManager implements IOFMessageListener, IFloo
 	}
 	
 	
-	public Command handleARPRequest(IOFSwitch sw, OFMessage msg, FloodlightContext cntx) {
+	public boolean handleARPRequest(IOFSwitch sw, OFMessage msg, FloodlightContext cntx) {
 		Ethernet eth = IFloodlightProviderService.bcStore.get(cntx, IFloodlightProviderService.CONTEXT_PI_PAYLOAD);
 		if (! (eth.getPayload() instanceof ARP))
-			return Command.CONTINUE;
+			return false;
 		
 		ARP arpRequest = (ARP) eth.getPayload();
 		
 		System.out.print("[I] Handling ARP request for " + arpRequest.getTargetProtocolAddress() + ": ");
 		if (arpRequest.getTargetProtocolAddress().compareTo(VIRTUAL_ROUTER_IP) != 0) {
 			System.out.println("don't care");
-			return Command.CONTINUE;
+			return false;
 		}
 		System.out.println("ok");
 		
 		if (MASTER_ROUTER_IP == null)
-			return Command.STOP;
+			return false;
 		
 		/*
 		 * Reply ARP requests only for the Virtual Router 
@@ -186,10 +198,10 @@ public class VirtualRouterRedundancyManager implements IOFMessageListener, IFloo
 		
 		System.out.printf("[ARP] %s: %s - %s\n", VIRTUAL_ROUTER_IP, MASTER_ROUTER_MAC, MASTER_ROUTER_IP);
 		sendPacketOut(sw, pi.getMatch().get(MatchField.IN_PORT), arpReply);
-		return Command.STOP;
+		return true;
 	}
 	
-	public void sendGratuitousARPRequest(IOFSwitch sw) {
+	public void sendGratuitousARPReply(IOFSwitch sw) {
 		// Replay on behalf of MASTER_ROUTER
 		IPacket arpRequest = new Ethernet()
 				.setSourceMACAddress(MASTER_ROUTER_MAC)
@@ -206,10 +218,10 @@ public class VirtualRouterRedundancyManager implements IOFMessageListener, IFloo
 						.setSenderHardwareAddress(MASTER_ROUTER_MAC)
 						.setSenderProtocolAddress(VIRTUAL_ROUTER_IP)
 						.setTargetHardwareAddress(MacAddress.BROADCAST)
-						.setTargetProtocolAddress(BROADCAST)
+						.setTargetProtocolAddress(VIRTUAL_ROUTER_IP)
 				);
 		
-		System.out.printf("[ARP] Gratuitous entry: %s: %s - %s\n", VIRTUAL_ROUTER_IP, MASTER_ROUTER_MAC, MASTER_ROUTER_IP);
+		System.out.printf("[ARP] Gratuitous reply for %s: %s - %s\n", VIRTUAL_ROUTER_IP, MASTER_ROUTER_MAC, MASTER_ROUTER_IP);
 		sendPacketOut(sw, OFPort.FLOOD, arpRequest);
 	}
 	
@@ -249,22 +261,24 @@ public class VirtualRouterRedundancyManager implements IOFMessageListener, IFloo
 			MASTER_ROUTER_IP = pkt.getSourceAddress();
 			MASTER_ROUTER_MAC = eth.getSourceMACAddress();
 			LAST_MASTER_ADV = timestamp;
-			sendGratuitousARPRequest(sw);
+			sendGratuitousARPReply(sw);
 			return;
 		}
 		
 		/* 
 		 * Preemption:
 		 * if the controller receive an ADV from the router with higher priority
-		 * but actually it is the Backup router, it will become the Master 
+		 * but actually it is the Backup router, it will become the Master.
 		 */
-		if (pkt.getSourceAddress().compareTo(PRIMARY_ROUTER_IP) == 0 && MASTER_ROUTER_IP.compareTo(PRIMARY_ROUTER_IP) != 0) {
-			System.out.printf("[P] Preemption: %s became the Master\n", PRIMARY_ROUTER_IP);
-			MASTER_ROUTER_IP = pkt.getSourceAddress();
-			MASTER_ROUTER_MAC = eth.getSourceMACAddress();
-			LAST_MASTER_ADV = timestamp;
-			sendGratuitousARPRequest(sw);
-			return;
+		if (preemptionMode) {
+			if (pkt.getSourceAddress().compareTo(PRIMARY_ROUTER_IP) == 0 && MASTER_ROUTER_IP.compareTo(PRIMARY_ROUTER_IP) != 0) {
+				System.out.printf("[P] Preemption: %s became the Master\n", PRIMARY_ROUTER_IP);
+				MASTER_ROUTER_IP = pkt.getSourceAddress();
+				MASTER_ROUTER_MAC = eth.getSourceMACAddress();
+				LAST_MASTER_ADV = timestamp;
+				sendGratuitousARPReply(sw);
+				return;
+			}
 		}
 		
 	}
@@ -288,6 +302,33 @@ public class VirtualRouterRedundancyManager implements IOFMessageListener, IFloo
 				
 		// Send packet
 		sw.write(pob.build());
+	}
+
+	@Override
+	public Map<String, Object> getVRRMInfo() {
+		Map<String, Object> info = new HashMap<String, Object>();
+		info.put("virtual_router_ip", VIRTUAL_ROUTER_IP.toString());
+		if (PRIMARY_ROUTER_IP == null)
+			info.put("primary_router_ip", null);
+		else
+			info.put("primary_router_ip", PRIMARY_ROUTER_IP.toString());
+		info.put("preemption_mode", Boolean.toString(preemptionMode));
+		return info;
+	}
+
+	@Override
+	public void setVirtualRouterIP(String newValue) throws IllegalArgumentException {
+		VIRTUAL_ROUTER_IP = IPv4Address.of(newValue);
+	}
+
+	@Override
+	public void setPrimaryRouterIP(String newValue) throws IllegalArgumentException {
+		PRIMARY_ROUTER_IP = IPv4Address.of(newValue);
+	}
+
+	@Override
+	public void setPreemptionMode(boolean newValue) {
+		preemptionMode = newValue;
 	}
 
 }
