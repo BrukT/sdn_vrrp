@@ -1,4 +1,4 @@
-package it.unipi.ce.anaws.vrrm.VirtualRouterRedundancyManager;
+package it.unipi.ce.anaws.vrrm;
 
 import java.util.ArrayList;
 import java.util.Arrays;
