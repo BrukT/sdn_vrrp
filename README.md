@@ -27,13 +27,19 @@ Each host in the subnet controlled by the OpenFlow controller has been configure
 
 Both routers involved in the protocol start sending UDP advertisements in `broadcast` to port `2020` with an interval of `1` second. The controller will elect as _Master_ the router from which it received the _ADV_ first. The other will become the _Backup_ router. 
 
-Every time the controller receives an _ADV_ form the _Master_, it updates the variable `LAST_MASTER_ADV` that represents the time in which it received the last _ADV_ from the _Master_.
+The controller maintains the following data:
+- `MASTER_ROUTER`: represents the actual MAC and IP address of the elected _Master_ router;
+- `LAST_MASTER_ADV`: represents the last time that the controller has received an _ADV_ from the _Master_;
+- `MASTER_DOWN_INTERVAL`: represents the time interval to decleare _Master_ no more active. Usually it is set accordingly to the interval time between two consecutive _ADVs_ (`1` second in our case).
 
-If the controller receives an _ADV_ from the _Backup_ router and it is not receiving _ADVs_ from the _Master_ for a period greater than the _ADV interval_ (that we set to `1`), it will promote the _Backup_ to _Master_. Moreover the controller will flood the new _Master_ MAC address to all the hosts.
+Every time the controller receives an _ADV_ form the _Master_, it updates the `LAST_MASTER_ADV`.
+
+If the controller receives an _ADV_ from the _Backup_ router and it is not receiving _ADVs_ from the _Master_ for a period greater than the `MASTER_DOWN_INTERVAL`, it will promote the _Backup_ to _Master_. Moreover the controller will flood the new _Master_ MAC address to all the hosts by means of a _Gratuitous ARP Reply_.
 
 ### Preemption mode
 
-We implemented also a version with a _preemption mode_ in which it is possible to set a `PRIMARY_ROUTER` which, if for any reason has been demoted to _Backup_, if it becomes active again, the controller is able to promote it as _Master_ even if it is continuing to receive _ADVs_ from the current _Master_.
+It is possible to run the protocol with a _preemption mode_ in which it is possible to set a `PRIMARY_ROUTER` which, when active, must be the `MASTER_ROUTER`.
+
 
 ### Algorithm in pseudocode
 
@@ -51,7 +57,7 @@ on_receive(source):
     LAST_MASTER_ADV = time.now
     flood(MASTER_ROUTER_MAC)
     
-  else if source is PRIMARY_ROUTER and PRIMARY_ROUTER is not MASTER_ROUTER:
+  else if preemption and source is PRIMARY_ROUTER and PRIMARY_ROUTER is not MASTER_ROUTER:
     MASTER_ROUTER = source
     LAST_MASTER_ADV = time.now
     flood(MASTER_ROUTER_MAC)
@@ -60,6 +66,19 @@ on_receive(source):
 ### ARP Replies
 
 Whenever the controller gets an ARP request for knowing which is the MAC address of the `VIRTUAL_ROUTER`, the controller will reply with the MAC address of the current `MASTER_ROUTER`.
+
+### Configuration
+
+The controller can be configured in order to adapt it for any network. The configuration is offered by means of _REST_ resources which are exposed at `http://127.0.0.1:8080/vrrm/config` in a _JSON_ format.
+The default configuration is represented by the following json object:
+
+```
+{
+  "virtual_host_ip": "10.0.1.10"
+  "primary_router_ip": "10.0.1.1"
+  "preemption_mode": false
+}
+```
 
 ## Troubleshooting
 
