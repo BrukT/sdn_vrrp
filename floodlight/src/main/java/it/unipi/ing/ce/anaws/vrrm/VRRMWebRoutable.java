@@ -1,4 +1,4 @@
-package it.unipi.ce.anaws.vrrm;
+package it.unipi.ing.ce.anaws.vrrm;
 
 import org.restlet.Context;
 import org.restlet.Restlet;
