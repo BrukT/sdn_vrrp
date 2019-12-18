@@ -41,7 +41,7 @@ If the controller receives an _ADV_ from the _Backup_ router and it is not recei
 It is possible to run the protocol with a _preemption mode_ in which it is possible to set a `PRIMARY_ROUTER` which, when active, must be the `MASTER_ROUTER`.
 
 
-### Algorithm in pseudocode
+### Algorithm pseudocode
 
 ```
 on_receive(source):
@@ -79,6 +79,9 @@ The default configuration is represented by the following json object:
   "preemption_mode": false
 }
 ```
+
+If you want to edit the above configurations you have to make a POST request to the resource `http://127.0.0.1:8080/vrrm/config`. For this purpose you can use the Firefox plugin called _RESTED_ in which you build your own JSON payload and issue it.
+In order to modify a specific parameter you have to put its name in the `KEY` field and its new value in the `VALUE` field.
 
 ## Troubleshooting
 
