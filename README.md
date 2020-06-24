@@ -1,6 +1,6 @@
 # Simulating Virtual Router Redundancy Protocol in a SDN environment
 
-The aim of this project is to offer a centralized solution in a Software Defined Network environment for solving the First Hop Redundancy (FHR) issue. It has been realized using the Floodlight Java framework which implements OpenFlow controllers.
+The aim of this project is to offer a centralized solution in a Software Defined Network environment for solving the First Hop Redundancy (FHR) chalenge. It has been realized using the Floodlight Java framework which implements OpenFlow controllers.
 
 ## Controller
 
